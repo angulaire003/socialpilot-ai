@@ -8,6 +8,7 @@ import {
   FileText,
   Calendar,
   Link2,
+  CalendarRange,
   Menu,
   X,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/assistant", label: "Assistant IA", icon: Sparkles },
+  { href: "/plan", label: "Plan de contenu", icon: CalendarRange },
   { href: "/posts", label: "Publications", icon: FileText },
   { href: "/calendar", label: "Calendrier", icon: Calendar },
   { href: "/connections", label: "Réseaux", icon: Link2 },
