@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { chatJSON, hasAnyProvider } from "@/lib/ai";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const TONE_INSTRUCTIONS: Record<string, string> = {
   professional: "Ton professionnel, clair, crédible, posé. Autorité tranquille, zéro jargon inutile.",
@@ -104,9 +106,7 @@ export async function POST(req: NextRequest) {
       voice: clean(brandIn.voice, 300),
     };
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.GROK_API_KEY;
-
-    if (!apiKey) {
+    if (!hasAnyProvider()) {
       return NextResponse.json(generateFallback(idea, network, tone));
     }
 
@@ -123,49 +123,19 @@ TON : ${TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.professional}
 
 Écris maintenant la publication et les éléments demandés, en respectant le format JSON.`;
 
-    const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: user },
-        ],
-        temperature: 0.8,
-        max_tokens: 1800,
-        response_format: { type: "json_object" },
-      }),
+    const result = await chatJSON({
+      system: SYSTEM_PROMPT,
+      user,
+      temperature: 0.8,
+      maxTokens: 1800,
+      timeoutMs: 25000,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("AI API error:", response.status, errText);
-      return NextResponse.json(
-        {
-          error: `Le service IA a refusé la requête (code ${response.status}). Vérifiez la clé, le crédit du compte et le nom du modèle.`,
-        },
-        { status: 502 }
-      );
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 502 });
     }
 
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content || "{}";
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return NextResponse.json(
-        { error: "Réponse IA illisible. Réessayez." },
-        { status: 502 }
-      );
-    }
+    const parsed: any = result.json;
 
     const hashtags: string[] = Array.isArray(parsed.hashtags)
       ? parsed.hashtags
@@ -181,6 +151,7 @@ TON : ${TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.professional}
       visual_idea: typeof parsed.visual_idea === "string" ? parsed.visual_idea : "",
       best_time: typeof parsed.best_time === "string" ? parsed.best_time : "",
       why_it_works: typeof parsed.why_it_works === "string" ? parsed.why_it_works : "",
+      provider: result.provider,
     });
   } catch (error) {
     console.error(error);

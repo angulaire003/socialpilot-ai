@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { chatJSON, hasAnyProvider } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -60,10 +61,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.GROK_API_KEY;
-    if (!apiKey) {
+    if (!hasAnyProvider()) {
       return NextResponse.json(
-        { error: "Clé IA manquante : ajoutez OPENAI_API_KEY dans Vercel." },
+        { error: "Aucune clé IA configurée : ajoutez OPENAI_API_KEY, DEEPSEEK_API_KEY, GROK_API_KEY ou GEMINI_API_KEY dans Vercel." },
         { status: 400 }
       );
     }
@@ -78,41 +78,19 @@ ${focus ? `PRIORITÉ DU MOMENT : ${focus}` : ""}
 
 Construis le plan de contenu complet.`;
 
-    const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: user },
-        ],
-        temperature: 0.8,
-        max_tokens: 4000,
-        response_format: { type: "json_object" },
-      }),
+    const result = await chatJSON({
+      system: SYSTEM_PROMPT,
+      user,
+      temperature: 0.8,
+      maxTokens: 4000,
+      timeoutMs: 40000,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Plan API error:", response.status, errText);
-      return NextResponse.json(
-        { error: `Le service IA a refusé la requête (code ${response.status}).` },
-        { status: 502 }
-      );
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 502 });
     }
 
-    const data = await response.json();
-    let parsed: any;
-    try {
-      parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
-    } catch {
-      return NextResponse.json({ error: "Plan illisible. Réessayez." }, { status: 502 });
-    }
+    const parsed: any = result.json;
 
     const raw: any[] = Array.isArray(parsed.items) ? parsed.items : [];
     const items = raw
